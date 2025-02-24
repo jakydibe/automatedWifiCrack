@@ -45,3 +45,15 @@ sudo ./install_dependencies.sh
 # Usage
 
 `sudo python3 automateWifiCrackingv2.py -i <YOUR_WIFI_INTERFACE>`
+
+
+
+the raw capture file .cap will be inside **handshakes/** directory and the ready-to-crack hashes will be on hashcat_22000 directory
+
+
+
+## Crack with Hashcat
+
+simply run
+
+`sudo hashcat -m 22000 <YOUR_22000_HASH> <PATH_TO_WORDLIST>`
