@@ -41,6 +41,10 @@ chmod +x install_dependencies.sh
 sudo ./install_dependencies.sh
 ```
 
+## Or simply install dependencies
+
+`sudo apt install aircrack-ng hcxtools xterm`
+
 
 # Usage
 
