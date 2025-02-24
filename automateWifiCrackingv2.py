@@ -42,10 +42,11 @@ class WiFiHandshakeCapture:
             print("OUTPUT: ",output)
             match = re.search(pattern, output)
             if match:
+                print("INTERFACE: ", match.group(1))
                 self.mon_interface = match.group(1)
             else:
                 self.mon_interface = f"wlan0mon"
-                print("ERROR: Monitor interface not found, using default wlan0mon")
+                print("ERROR: Monitor interface not found")
                 os._exit(0)
             print(f"[*] Monitor mode enabled on {self.mon_interface}")
             
@@ -182,7 +183,7 @@ class WiFiHandshakeCapture:
         print("[*] Cleaning up...")
         try:
             # Stop monitor mode
-            subprocess.run(["sudo", "airmon-ng", "stop", "wlan0mon"], 
+            subprocess.run(["sudo", "airmon-ng", "stop", self.mon_interface], 
                           stderr=subprocess.DEVNULL)
             
             # Restore network services
