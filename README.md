@@ -31,6 +31,10 @@ It simply uses various tools and merge them together. I did not write this tools
 
 ## Ubuntu/Debian
 
+```
+git clone https://github.com/jakydibe/automatedWifiCrack.git
+cd automatedWifiCrack.git
+```
 
 ```
 chmod +x install_dependencies.sh
