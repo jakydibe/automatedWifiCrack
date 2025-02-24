@@ -7,6 +7,7 @@ import signal
 import datetime
 import csv
 import os
+import re
 
 DEBUG = False
 
@@ -23,17 +24,30 @@ class WiFiHandshakeCapture:
         os.makedirs(self.output_dir, exist_ok=True)  # Add this line
         os.makedirs(self.capture_dir, exist_ok=True)
         os.makedirs(self.hashcat_22000_dir, exist_ok=True)
+
     def enable_monitor_mode(self):
         """Put the Wi-Fi interface into monitor mode with cleanup"""
         try:
             # Stop conflicting services
-            subprocess.run(["sudo", "systemctl", "stop", "NetworkManager"], check=True)
-            subprocess.run(["sudo", "systemctl", "stop", "wpa_supplicant"], check=True)
+            # subprocess.run(["sudo", "systemctl", "stop", "NetworkManager"], check=True)
+            # subprocess.run(["sudo", "systemctl", "stop", "wpa_supplicant"], check=True)
             
             # Start monitor mode
             subprocess.run(["sudo", "airmon-ng", "check", "kill"], check=True)
-            subprocess.run(["sudo", "airmon-ng", "start", self.interface], check=True)
-            self.mon_interface = f"wlan0mon"
+            result = subprocess.run(["sudo", "airmon-ng", "start", self.interface], stdout=subprocess.PIPE, check=True)
+            
+            pattern = r'monitor mode.*?\[phy\d+\](\w+)'
+            # raw output of last subprocess.run
+            output = result.stdout.decode('utf-8')
+            print("OUTPUT: ",output)
+            match = re.search(pattern, output)
+            if match:
+                self.mon_interface = match.group(1)
+            else:
+                self.mon_interface = f"wlan0mon"
+                print("ERROR: Monitor interface not found, using default wlan0mon")
+                os._exit(0)
+            print(f"[*] Monitor mode enabled on {self.mon_interface}")
             
             # Create main tmux session
             subprocess.run(["tmux", "new-session", "-d", "-s", self.tmux_session, "-n", "main"])
