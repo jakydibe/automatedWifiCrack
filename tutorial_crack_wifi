@@ -1,0 +1,26 @@
+1) fireuppiamo airgeddon con sudo bash ./airgeddon.sh
+2) catturiamo handshake (quando funziona)
+3) il .cap lo convertiamo in formato hashcat cosi': "hcxpcapngtool -o output.22000 capture.cap"
+4) su hashcat runniamo sudo hashcat -m 22000 output.22000 /usr/share/rockyou.txt -d 2.   -d 2 e' per usare la mia GPU
+
+
+
+PER FARE MASK ATTACK
+
+
+
+
+    ?l = abcdefghijklmnopqrstuvwxyz
+    ?u = ABCDEFGHIJKLMNOPQRSTUVWXYZ
+    ?d = 0123456789
+    ?h = 0123456789abcdef
+    ?H = 0123456789ABCDEF
+    ?s = «space»!"#$%&'()*+,-./:;<=>?@[\]^_`{|}~
+    ?a = ?l?u?d?s
+    ?b = 0x00 - 0xff
+
+usage: hashcat -a 3 -m 22000 hash.22000 ?a?a?a?a?a?a?a?a
+
+
+Per craccare stesso hash modifica sudo nano /root/.local/share/hashcat/hashcat.potfile
+
